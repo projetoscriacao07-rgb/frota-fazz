@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
+import {
+  collection, onSnapshot, doc, updateDoc,
+  query, where, getDocs, serverTimestamp,
+} from 'firebase/firestore'
 import { db } from '../firebase'
 import { TIPOS_VEICULO } from '../utils'
 import SeedButton from './SeedButton.jsx'
@@ -7,6 +10,7 @@ import SeedButton from './SeedButton.jsx'
 export default function VeiculosStatus() {
   const [veiculos, setVeiculos] = useState(null)
   const [colaboradores, setColaboradores] = useState({})
+  const [liberando, setLiberando] = useState(null)
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'veiculos'), (snap) => {
@@ -23,6 +27,31 @@ export default function VeiculosStatus() {
     })
     return () => unsub()
   }, [])
+
+  // Proteção extra: se um veículo ficar preso "em uso" (ex: colaborador
+  // perdeu a conexão no meio do processo), o admin consegue liberar na mão
+  // sem precisar mexer direto no banco de dados.
+  async function liberarVeiculo(v) {
+    if (!confirm(`Liberar o veículo ${v.marca} / ${v.modelo}? Use isso só se ele estiver preso "em uso" por engano — o colaborador não vai conseguir informar o KM final desse uso depois.`)) return
+    setLiberando(v.id)
+    try {
+      await updateDoc(doc(db, 'veiculos', v.id), { emUsoPor: null })
+      const q = query(
+        collection(db, 'registrosUso'),
+        where('veiculoId', '==', v.id),
+        where('horaFim', '==', null),
+      )
+      const snap = await getDocs(q)
+      await Promise.all(
+        snap.docs.map((d) => updateDoc(d.ref, {
+          horaFim: serverTimestamp(),
+          liberadoPeloAdmin: true,
+        }))
+      )
+    } finally {
+      setLiberando(null)
+    }
+  }
 
   if (veiculos === null) return <div className="empty-state">Carregando…</div>
 
@@ -69,7 +98,17 @@ export default function VeiculosStatus() {
                   <div className="meta">Placa {v.placa}</div>
                 </div>
                 {v.emUsoPor ? (
-                  <span className="badge badge-uso">{colaboradores[v.emUsoPor] || '...'}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="badge badge-uso">{colaboradores[v.emUsoPor] || '...'}</span>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ padding: '4px 10px', fontSize: 12 }}
+                      disabled={liberando === v.id}
+                      onClick={() => liberarVeiculo(v)}
+                    >
+                      {liberando === v.id ? 'Liberando…' : 'Liberar'}
+                    </button>
+                  </div>
                 ) : (
                   <span className="badge badge-livre">Disponível</span>
                 )}
