@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   collection, onSnapshot, doc, runTransaction,
-  addDoc, updateDoc, serverTimestamp,
+  addDoc, updateDoc, serverTimestamp, query, where, getDocs,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { todayStr, TIPOS_VEICULO } from '../utils'
@@ -12,6 +12,7 @@ export default function Veiculos({ colaboradorId, fluxo, setFluxo }) {
   const [erro, setErro] = useState('')
   const [valorInput, setValorInput] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [verificandoFluxo, setVerificandoFluxo] = useState(true)
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'veiculos'), (snap) => {
@@ -19,6 +20,45 @@ export default function Veiculos({ colaboradorId, fluxo, setFluxo }) {
     })
     return () => unsub()
   }, [])
+
+  // Se a pessoa atualizar a página, fechar o app ou trocar de aparelho no
+  // meio da retirada de um veículo, o passo (km inicial/final) some da
+  // memória da tela, mas o veículo continua marcado como "em uso" dela no
+  // banco. Aqui a gente busca no banco se existe um registro de uso ainda
+  // em aberto (sem horaFim) dessa pessoa e recria a tela automaticamente,
+  // pra ela conseguir continuar de onde parou.
+  useEffect(() => {
+    if (fluxo || veiculos === null) {
+      setVerificandoFluxo(false)
+      return
+    }
+    let ativo = true
+    async function restaurar() {
+      try {
+        const q = query(
+          collection(db, 'registrosUso'),
+          where('colaboradorId', '==', colaboradorId),
+          where('horaFim', '==', null),
+        )
+        const snap = await getDocs(q)
+        if (!ativo || snap.empty) return
+        const registro = snap.docs[0]
+        const dados = registro.data()
+        const veiculo = veiculos.find((v) => v.id === dados.veiculoId)
+        if (!veiculo) return
+        setFluxo({
+          veiculoId: dados.veiculoId,
+          registroId: registro.id,
+          etapa: dados.kmInicial == null ? 'km_inicial' : 'km_final',
+          veiculoLabel: labelVeiculo(veiculo),
+        })
+      } finally {
+        if (ativo) setVerificandoFluxo(false)
+      }
+    }
+    restaurar()
+    return () => { ativo = false }
+  }, [veiculos, fluxo, colaboradorId])
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'colaboradores'), (snap) => {
@@ -80,11 +120,38 @@ export default function Veiculos({ colaboradorId, fluxo, setFluxo }) {
     setFluxo(null)
   }
 
+  async function reabrirFluxo(veiculo) {
+    setErro('')
+    try {
+      const q = query(
+        collection(db, 'registrosUso'),
+        where('veiculoId', '==', veiculo.id),
+        where('colaboradorId', '==', colaboradorId),
+        where('horaFim', '==', null),
+      )
+      const snap = await getDocs(q)
+      if (snap.empty) {
+        setErro('Não encontramos um processo em aberto para esse veículo. Fale com o administrador.')
+        return
+      }
+      const registro = snap.docs[0]
+      const dados = registro.data()
+      setFluxo({
+        veiculoId: veiculo.id,
+        registroId: registro.id,
+        etapa: dados.kmInicial == null ? 'km_inicial' : 'km_final',
+        veiculoLabel: labelVeiculo(veiculo),
+      })
+    } catch (e) {
+      setErro(e.message)
+    }
+  }
+
   function labelVeiculo(v) {
     return `${v.marca} / ${v.modelo}`
   }
 
-  if (veiculos === null) return <div className="empty-state">Carregando…</div>
+  if (veiculos === null || verificandoFluxo) return <div className="empty-state">Carregando…</div>
 
   return (
     <div>
@@ -103,7 +170,10 @@ export default function Veiculos({ colaboradorId, fluxo, setFluxo }) {
                 <div
                   key={v.id}
                   className={`list-item ${emUso && !meuVeiculo ? 'disabled' : ''}`}
-                  onClick={() => !emUso && selecionarVeiculo(v)}
+                  onClick={() => {
+                    if (emUso && meuVeiculo && !fluxo) return reabrirFluxo(v)
+                    if (!emUso) return selecionarVeiculo(v)
+                  }}
                 >
                   <div>
                     <div className="title">{v.marca} / {v.modelo}</div>
