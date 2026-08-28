@@ -13,6 +13,12 @@ export function weekId(date = new Date()) {
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
 }
 
+export function yesterdayStr() {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
 export function formatDateTime(ts) {
   if (!ts) return '—'
   const d = ts.toDate ? ts.toDate() : new Date(ts)
