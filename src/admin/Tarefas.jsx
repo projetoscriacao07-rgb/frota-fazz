@@ -3,7 +3,7 @@ import {
   collection, onSnapshot, addDoc, deleteDoc, doc, query, where,
 } from 'firebase/firestore'
 import { db } from '../firebase'
-import { todayStr } from '../utils'
+import { todayStr, yesterdayStr } from '../utils'
 
 export default function Tarefas() {
   const [subaba, setSubaba] = useState('atribuir')
@@ -20,13 +20,16 @@ export default function Tarefas() {
   return (
     <div>
       <div className="pill-row">
-        <button className={`pill ${subaba === 'atribuir' ? 'active' : ''}`} onClick={() => setSubaba('atribuir')}>Atribuir</button>
-        <button className={`pill ${subaba === 'historico' ? 'active' : ''}`} onClick={() => setSubaba('historico')}>Histórico</button>
+        <button className={`pill ${subaba === 'atribuir' ? 'active' : ''}`} onClick={() => { setSubaba('atribuir'); setSelecionado(null) }}>Atribuir</button>
+        <button className={`pill ${subaba === 'historico' ? 'active' : ''}`} onClick={() => { setSubaba('historico'); setSelecionado(null) }}>Histórico</button>
+        <button className={`pill ${subaba === 'pendencias' ? 'active' : ''}`} onClick={() => { setSubaba('pendencias'); setSelecionado(null) }}>Pendências</button>
       </div>
 
-      {colaboradores.length === 0 && <div className="empty-state">Cadastre colaboradores primeiro.</div>}
+      {subaba === 'pendencias' && <Pendencias colaboradores={colaboradores} />}
 
-      {colaboradores.length > 0 && !selecionado && (
+      {subaba !== 'pendencias' && colaboradores.length === 0 && <div className="empty-state">Cadastre colaboradores primeiro.</div>}
+
+      {subaba !== 'pendencias' && colaboradores.length > 0 && !selecionado && (
         <div>
           {colaboradores.map((c) => (
             <div key={c.id} className="list-item" onClick={() => setSelecionado(c)}>
@@ -43,6 +46,49 @@ export default function Tarefas() {
       {selecionado && subaba === 'historico' && (
         <HistoricoPeriodo colaborador={selecionado} onVoltar={() => setSelecionado(null)} />
       )}
+    </div>
+  )
+}
+
+function Pendencias({ colaboradores }) {
+  const [data, setData] = useState(yesterdayStr())
+  const [tarefas, setTarefas] = useState(null)
+
+  useEffect(() => {
+    const q = query(
+      collection(db, 'tarefasDiarias'),
+      where('data', '==', data),
+      where('concluida', '==', false)
+    )
+    const unsub = onSnapshot(q, (snap) => {
+      setTarefas(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    })
+    return () => unsub()
+  }, [data])
+
+  const nomes = {}
+  colaboradores.forEach((c) => { nomes[c.id] = c.nome })
+
+  return (
+    <div>
+      <div className="card">
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Ver pendências do dia</label>
+          <input className="input" type="date" value={data} onChange={(e) => setData(e.target.value)} max={todayStr()} />
+        </div>
+      </div>
+
+      {tarefas === null && <div className="empty-state">Carregando…</div>}
+      {tarefas?.length === 0 && <div className="empty-state">Ninguém ficou com tarefa pendente nesse dia. 🎉</div>}
+      {tarefas?.map((t) => (
+        <div key={t.id} className="list-item" style={{ cursor: 'default' }}>
+          <div>
+            <div className="title">{t.texto}</div>
+            <div className="meta">{nomes[t.colaboradorId] || '...'}</div>
+          </div>
+          <span className="badge badge-pendente">Pendente</span>
+        </div>
+      ))}
     </div>
   )
 }
