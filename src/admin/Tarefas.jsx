@@ -5,8 +5,8 @@ import {
 import { db } from '../firebase'
 import { todayStr, yesterdayStr } from '../utils'
 
-export default function Tarefas() {
-  const [subaba, setSubaba] = useState('atribuir')
+export default function Tarefas({ podeEditar }) {
+  const [subaba, setSubaba] = useState(podeEditar ? 'atribuir' : 'historico')
   const [colaboradores, setColaboradores] = useState([])
   const [selecionado, setSelecionado] = useState(null)
 
@@ -20,7 +20,9 @@ export default function Tarefas() {
   return (
     <div>
       <div className="pill-row">
-        <button className={`pill ${subaba === 'atribuir' ? 'active' : ''}`} onClick={() => { setSubaba('atribuir'); setSelecionado(null) }}>Atribuir</button>
+        {podeEditar && (
+          <button className={`pill ${subaba === 'atribuir' ? 'active' : ''}`} onClick={() => { setSubaba('atribuir'); setSelecionado(null) }}>Atribuir</button>
+        )}
         <button className={`pill ${subaba === 'historico' ? 'active' : ''}`} onClick={() => { setSubaba('historico'); setSelecionado(null) }}>Histórico</button>
         <button className={`pill ${subaba === 'pendencias' ? 'active' : ''}`} onClick={() => { setSubaba('pendencias'); setSelecionado(null) }}>Pendências</button>
       </div>
@@ -40,7 +42,7 @@ export default function Tarefas() {
         </div>
       )}
 
-      {selecionado && subaba === 'atribuir' && (
+      {podeEditar && selecionado && subaba === 'atribuir' && (
         <AtribuirTarefas colaborador={selecionado} onVoltar={() => setSelecionado(null)} />
       )}
       {selecionado && subaba === 'historico' && (
@@ -85,6 +87,7 @@ function Pendencias({ colaboradores }) {
           <div>
             <div className="title">{t.texto}</div>
             <div className="meta">{nomes[t.colaboradorId] || '...'}</div>
+            {t.observacao && <div className="meta" style={{ fontStyle: 'italic' }}>{t.observacao}</div>}
           </div>
           <span className="badge badge-pendente">Pendente</span>
         </div>
@@ -96,6 +99,7 @@ function Pendencias({ colaboradores }) {
 function AtribuirTarefas({ colaborador, onVoltar }) {
   const [data, setData] = useState(todayStr())
   const [texto, setTexto] = useState('')
+  const [observacao, setObservacao] = useState('')
   const [tarefas, setTarefas] = useState(null)
 
   useEffect(() => {
@@ -115,10 +119,12 @@ function AtribuirTarefas({ colaborador, onVoltar }) {
     await addDoc(collection(db, 'tarefasDiarias'), {
       colaboradorId: colaborador.id,
       texto: texto.trim(),
+      observacao: observacao.trim() || null,
       data,
       concluida: false,
     })
     setTexto('')
+    setObservacao('')
   }
 
   async function excluir(id) {
@@ -139,6 +145,10 @@ function AtribuirTarefas({ colaborador, onVoltar }) {
           <label>Nova tarefa</label>
           <input className="input" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ex: Organizar estoque" />
         </div>
+        <div className="field">
+          <label>Observação (opcional)</label>
+          <input className="input" value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex: pode ser feito até sexta" />
+        </div>
         <button className="btn btn-primary" onClick={adicionar}>Adicionar tarefa</button>
       </div>
 
@@ -146,6 +156,7 @@ function AtribuirTarefas({ colaborador, onVoltar }) {
         <div key={t.id} className="list-item" style={{ cursor: 'default' }}>
           <div>
             <div className="title">{t.texto}</div>
+            {t.observacao && <div className="meta" style={{ fontStyle: 'italic' }}>{t.observacao}</div>}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span className={`badge ${t.concluida ? 'badge-feito' : 'badge-pendente'}`}>
@@ -198,6 +209,7 @@ function HistoricoPeriodo({ colaborador, onVoltar }) {
           <div>
             <div className="title">{t.texto}</div>
             <div className="meta">{t.data}</div>
+            {t.observacao && <div className="meta" style={{ fontStyle: 'italic' }}>{t.observacao}</div>}
           </div>
           <span className={`badge ${t.concluida ? 'badge-feito' : 'badge-pendente'}`}>
             {t.concluida ? 'Concluída' : 'Pendente'}
