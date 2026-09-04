@@ -5,7 +5,7 @@ import {
 import { db } from '../firebase'
 import { todayStr, yesterdayStr } from '../utils'
 
-export default function Tarefas({ podeEditar }) {
+export default function Tarefas({ podeEditar = true }) {
   const [subaba, setSubaba] = useState(podeEditar ? 'atribuir' : 'historico')
   const [colaboradores, setColaboradores] = useState([])
   const [selecionado, setSelecionado] = useState(null)
