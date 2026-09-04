@@ -4,36 +4,12 @@ import { db } from '../firebase'
 import { todayStr, formatDate } from '../utils'
 
 export default function TarefasDiarias({ colaboradorId }) {
-  const [tarefas, setTarefas] = useState(null)
-  const [atrasadas, setAtrasadas] = useState(null)
+  const [todas, setTodas] = useState(null)
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'tarefasDiarias'),
-      where('colaboradorId', '==', colaboradorId),
-      where('data', '==', todayStr())
-    )
+    const q = query(collection(db, 'tarefasDiarias'), where('colaboradorId', '==', colaboradorId))
     const unsub = onSnapshot(q, (snap) => {
-      const lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      lista.sort((a, b) => (a.concluida === b.concluida ? 0 : a.concluida ? 1 : -1))
-      setTarefas(lista)
-    })
-    return () => unsub()
-  }, [colaboradorId])
-
-  // Tarefas de dias anteriores que ficaram sem marcar como concluídas.
-  useEffect(() => {
-    const q = query(
-      collection(db, 'tarefasDiarias'),
-      where('colaboradorId', '==', colaboradorId),
-      where('concluida', '==', false)
-    )
-    const unsub = onSnapshot(q, (snap) => {
-      const lista = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((t) => t.data < todayStr())
-      lista.sort((a, b) => (a.data < b.data ? -1 : 1))
-      setAtrasadas(lista)
+      setTodas(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
     })
     return () => unsub()
   }, [colaboradorId])
@@ -45,11 +21,26 @@ export default function TarefasDiarias({ colaboradorId }) {
     })
   }
 
-  if (tarefas === null) return <div className="empty-state">Carregando…</div>
+  if (todas === null) return <div className="empty-state">Carregando…</div>
+
+  const hoje = todayStr()
+  const atrasadas = todas
+    .filter((t) => t.data < hoje && !t.concluida)
+    .sort((a, b) => (a.data < b.data ? -1 : 1))
+  const tarefasHoje = todas
+    .filter((t) => t.data === hoje)
+    .sort((a, b) => (a.concluida === b.concluida ? 0 : a.concluida ? 1 : -1))
+  // Tarefas já atribuídas pra datas futuras — útil pra quem trabalha em dias
+  // que o pessoal do admin não trabalha (ex: fim de semana) e não tem como
+  // perguntar na hora o que vai ter depois. O gestor pode deixar uma
+  // observação em cada uma (ex: prazo, contexto).
+  const futuras = todas
+    .filter((t) => t.data > hoje)
+    .sort((a, b) => (a.data < b.data ? -1 : 1))
 
   return (
     <div>
-      {atrasadas && atrasadas.length > 0 && (
+      {atrasadas.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div className="section-title" style={{ color: '#C0392B' }}>Atrasadas</div>
           {atrasadas.map((t) => (
@@ -57,6 +48,7 @@ export default function TarefasDiarias({ colaboradorId }) {
               <div>
                 <div className="title">{t.texto}</div>
                 <div className="meta">{formatDate(new Date(t.data + 'T00:00:00'))}</div>
+                {t.observacao && <div className="meta" style={{ fontStyle: 'italic' }}>{t.observacao}</div>}
               </div>
               <button className="btn btn-orange btn-small" onClick={() => concluir(t.id)}>
                 Concluir
@@ -67,13 +59,14 @@ export default function TarefasDiarias({ colaboradorId }) {
       )}
 
       <div className="section-title">Hoje</div>
-      {tarefas.length === 0 && <div className="empty-state">Nenhuma tarefa para hoje. 🎉</div>}
-      {tarefas.map((t) => (
+      {tarefasHoje.length === 0 && <div className="empty-state">Nenhuma tarefa para hoje. 🎉</div>}
+      {tarefasHoje.map((t) => (
         <div key={t.id} className="list-item" style={{ cursor: 'default' }}>
           <div>
             <div className="title" style={t.concluida ? { textDecoration: 'line-through', color: '#b0b0b0' } : undefined}>
               {t.texto}
             </div>
+            {t.observacao && <div className="meta" style={{ fontStyle: 'italic' }}>{t.observacao}</div>}
           </div>
           {t.concluida ? (
             <span className="badge badge-feito">Concluída</span>
@@ -84,6 +77,22 @@ export default function TarefasDiarias({ colaboradorId }) {
           )}
         </div>
       ))}
+
+      {futuras.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div className="section-title">Tarefas futuras</div>
+          {futuras.map((t) => (
+            <div key={t.id} className="list-item" style={{ cursor: 'default' }}>
+              <div>
+                <div className="title" style={{ color: '#8a8a8a' }}>{t.texto}</div>
+                <div className="meta">{formatDate(new Date(t.data + 'T00:00:00'))}</div>
+                {t.observacao && <div className="meta" style={{ fontStyle: 'italic' }}>{t.observacao}</div>}
+              </div>
+              <span className="badge badge-livre">Prévia</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
