@@ -5,17 +5,19 @@ import {
 import { db } from '../firebase'
 import { weekId, formatDateTime, TIPOS_VEICULO } from '../utils'
 
-export default function Checklist() {
-  const [subaba, setSubaba] = useState('gerenciar')
+export default function Checklist({ podeEditar = true }) {
+  const [subaba, setSubaba] = useState(podeEditar ? 'gerenciar' : 'realizados')
 
   return (
     <div>
       <div className="pill-row">
-        <button className={`pill ${subaba === 'gerenciar' ? 'active' : ''}`} onClick={() => setSubaba('gerenciar')}>Gerenciar checklist</button>
+        {podeEditar && (
+          <button className={`pill ${subaba === 'gerenciar' ? 'active' : ''}`} onClick={() => setSubaba('gerenciar')}>Gerenciar checklist</button>
+        )}
         <button className={`pill ${subaba === 'realizados' ? 'active' : ''}`} onClick={() => setSubaba('realizados')}>Checklist realizados</button>
       </div>
 
-      {subaba === 'gerenciar' && <GerenciarModelos />}
+      {podeEditar && subaba === 'gerenciar' && <GerenciarModelos />}
       {subaba === 'realizados' && <ChecklistsRealizados />}
     </div>
   )
@@ -108,7 +110,9 @@ function ChecklistsRealizados() {
   const [realizados, setRealizados] = useState({})
   const [colaboradores, setColaboradores] = useState({})
   const [selecionado, setSelecionado] = useState(null)
-  const semana = weekId()
+  const [dataRef, setDataRef] = useState(new Date())
+  const semana = weekId(dataRef)
+  const semanaAtual = weekId()
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'veiculos'), (snap) => {
@@ -136,11 +140,27 @@ function ChecklistsRealizados() {
     return () => unsub()
   }, [semana])
 
+  function mudarSemana(delta) {
+    setDataRef((d) => {
+      const novo = new Date(d)
+      novo.setDate(novo.getDate() + delta * 7)
+      return novo
+    })
+  }
+
   if (veiculos === null) return <div className="empty-state">Carregando…</div>
 
   return (
     <div>
-      <p className="meta" style={{ marginBottom: 12 }}>Semana atual: {semana}</p>
+      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px' }}>
+        <button className="btn btn-ghost btn-small" onClick={() => mudarSemana(-1)}>← Anterior</button>
+        <p className="meta" style={{ margin: 0, textAlign: 'center' }}>
+          Semana {semana}{semana === semanaAtual ? ' (atual)' : ''}
+        </p>
+        <button className="btn btn-ghost btn-small" onClick={() => mudarSemana(1)} disabled={semana === semanaAtual}>
+          Seguinte →
+        </button>
+      </div>
       {veiculos.map((v) => {
         const feito = realizados[v.id]
         const temObservacao = feito?.tarefas?.some((t) => t.observacao)
